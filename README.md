@@ -1,0 +1,3 @@
+We investigate the possibility of simple online fair division algorithms to satisfy certain natural global optimization goals and fairness requirements -- equitability, egalitarity, Nash product, utilitarity, envyfreeness, and leximin.
+We are interested in designing online algorithms for which there exist as many ordering of the goods for which, when observing the goods in these orderings, are able to satisfy the fairness criteria and the optimization goals.
+We report on theoretical findings as well as on computer-based simulations regarding artificially-generated data and data scrapped from Spliddit.
