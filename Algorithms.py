@@ -44,6 +44,37 @@ def egalitarian(allocation, utilities):
         agent_utility = sum(utilities[i][k] for k in allocation[i]) if allocation[i] else 0
         min_utility = min(min_utility, agent_utility)
     return min_utility
+def ef1(allocation, utilities):
+    n = len(utilities)
+    max_envy = float('-inf')
+    
+    for i in range(n):
+        u_i_S_i = sum(utilities[i][k] for k in allocation[i])
+        
+        for j in range(n):
+            if i != j:
+                u_i_S_j = sum(utilities[i][k] for k in allocation[j])
+                
+                if len(allocation[j]) > 1:
+                    u_i_S_j_min = float('inf')
+                    for item in allocation[j]:
+                        u_i_S_j_wo_item = u_i_S_j - utilities[i][item]
+                        u_i_S_j_min = min(u_i_S_j_min, u_i_S_j_wo_item)
+                else:
+                    u_i_S_j_min = u_i_S_j
+                
+                envy = u_i_S_j_min - u_i_S_i
+                max_envy = max(max_envy, envy)
+    
+    return max(0, max_envy)
+
+def leximin(allocation, utilities):
+    utilities_list = sorted([sum(utilities[i][k] for k in allocation[i]) for i in range(len(utilities))])
+    max_utility = max(utilities_list) if max(utilities_list) != 0 else 1
+
+    leximin_score = sum((utilities_list[i] / max_utility) * (0.1 ** i) for i in range(len(utilities_list)))
+    
+    return leximin_score
 
 def envy_freeness(allocation, utilities):
     n = len(allocation)
@@ -109,7 +140,53 @@ def least_satisfied_algorithm(utilities, perm):
     
     return allocation
 
+def current_envy_algorithm(utilities, perm):
+    n, m = utilities.shape
+    allocation = [[] for _ in range(n)]
+    
+    for j in perm:
+        max_current_envy = float('-inf')
+        most_envy_agent = -1
+        
+        for i in range(n):
+            current_envy = 0
+            for k in range(n):
+                if i != k:
+                    u_i_S_i = sum(utilities[i, item] for item in allocation[i])
+                    u_i_S_k = sum(utilities[i, item] for item in allocation[k])
+                    envy_i_k = u_i_S_k - u_i_S_i
+                    current_envy = max(current_envy, envy_i_k)
+            
+            if current_envy > max_current_envy:
+                max_current_envy = current_envy
+                most_envy_agent = i
+        
+        allocation[most_envy_agent].append(j)
+    
+    return allocation
 
+def utilitarian_least_satisfied_algorithm(utilities, perm):
+    allocation = [[] for _ in range(len(utilities))]
+    current_utilities = [0] * len(utilities)
+    
+    for j in perm:
+        min_utility = min(current_utilities)
+        least_satisfied_agents = [i for i in range(len(utilities)) if current_utilities[i] == min_utility]
+        best_agent = max(least_satisfied_agents, key=lambda i: utilities[i, j])
+        
+        allocation[best_agent].append(j)
+        current_utilities[best_agent] += utilities[best_agent][j]
+    
+    return allocation
+
+def balance_cardinality_algorithm(utilities, perm):
+    allocation = [[] for _ in range(len(utilities))]
+    
+    for j in perm:
+        fewest_items_agent = min(range(len(utilities)), key=lambda i: len(allocation[i]))
+        allocation[fewest_items_agent].append(j)
+    
+    return allocation
 
 def nash_product_algorithm(utilities, perm):
     n, m = utilities.shape
@@ -139,6 +216,71 @@ def nash_product_algorithm(utilities, perm):
 
     return allocation
 
+def optimal_ef1(utilities):
+    model = gp.Model()
+    n, m = utilities.shape
+    x = model.addVars(n, m, vtype=GRB.BINARY, name="x")
+    max_envy = model.addVar(vtype=GRB.CONTINUOUS, name="max_envy")
+
+    model.setObjective(max_envy, GRB.MINIMIZE)
+    
+    for j in range(m):
+        model.addConstr(gp.quicksum(x[i, j] for i in range(n)) == 1, name=f"item_{j}")
+
+    for i in range(n):
+        u_i_S_i = gp.quicksum(x[i, k] * utilities[i, k] for k in range(m))
+        for j in range(n):
+            if i != j:
+                for removed_item in range(m):
+                    u_i_S_j = gp.quicksum(x[j, k] * utilities[i, k] for k in range(m))
+                    u_i_S_j_wo_item = u_i_S_j - utilities[i, removed_item] * x[j, removed_item]
+                    model.addConstr(max_envy >= u_i_S_j_wo_item - u_i_S_i)
+
+    model.optimize()
+    
+    if model.Status != GRB.OPTIMAL:
+        print("The model did not converge. Here are the utilities:")
+        return None
+    
+    allocation = [[] for _ in range(n)]
+    for i in range(n):
+        for j in range(m):
+            if x[i, j].X > 0.5:
+                allocation[i].append(j)
+    
+    return allocation
+
+
+def optimal_leximin(utilities):
+    model = gp.Model()
+    n, m = utilities.shape
+
+    x = model.addVars(n, m, vtype=GRB.BINARY, name="x")
+    u = model.addVars(n, vtype=GRB.CONTINUOUS, name="u")
+
+    model.addConstrs(gp.quicksum(x[i, j] for i in range(n)) == 1 for j in range(m))
+    model.addConstrs(u[i] == gp.quicksum(utilities[i, j] * x[i, j] for j in range(m)) for i in range(n))
+    
+    lexicographic_objective = gp.quicksum((0.1 ** i) * u[i] for i in range(n))
+    
+    model.setObjective(lexicographic_objective, GRB.MAXIMIZE)
+    
+    model.addConstrs(u[i] <= u[i + 1] for i in range(n - 1))
+    
+    model.Params.OutputFlag = 0  
+    model.optimize()
+    
+    if model.Status != GRB.OPTIMAL:
+        print("The model did not converge.")
+        return None
+    
+    allocation = [[] for _ in range(n)]
+    for i in range(n):
+        for j in range(m):
+            if x[i, j].X > 0.5:
+                allocation[i].append(j)
+    
+    return allocation
 def optimal_envy_freeness(utilities):
     model = gp.Model()
     n, m = utilities.shape
@@ -255,56 +397,68 @@ def simulated_annealing(utilities, initial_temp=100, cooling_rate=0.95, steps=50
 
     return current_allocation, current_score
 
-
 def process_instance_file(file_path):
     utilities = np.array(extract_matrix(file_path))
     n, m = utilities.shape
     perms = list(permutations(range(m)))
-    score1=[]
-    score2=[]
+    score1 = []
+    score2 = []
     for perm in perms:
         allocation1 = max_utility_algorithm(utilities, perm)
         allocation2 = least_satisfied_algorithm(utilities, perm)
         score1.append(utilitarian(allocation1, utilities))
         score2.append(egalitarian(allocation2, utilities))
+    
     optimal_scores = []
     optimal_scores.append(max(score1))
     optimal_scores.append(max(score2))
     optimal_allocations = [
         optimal_envy_freeness(utilities),
-        optimal_equitability(utilities)
+        optimal_equitability(utilities),
+        optimal_ef1(utilities),
+        optimal_leximin(utilities)
     ]
 
-    optimal_criteria_scores = [envy_freeness, equitability]
+    optimal_criteria_scores = [envy_freeness, equitability, ef1, leximin]
 
     optimal_scores.extend([criterion(optimal_allocations[i], utilities) for i, criterion in enumerate(optimal_criteria_scores)])
     
-    sa_allocation = simulated_annealing(utilities)
-    optimal_scores.append(nash_product(sa_allocation[0], utilities))
+    sa_allocation, _ = simulated_annealing(utilities)
+    optimal_scores.append(nash_product(sa_allocation, utilities))
 
-    results = np.zeros((4, 5))
-    approximations = np.zeros((4, 5))  
-    algorithms = [max_utility_algorithm, least_satisfied_algorithm, most_envy_algorithm, nash_product_algorithm]
-    criteria = [utilitarian, egalitarian, envy_freeness, equitability, nash_product]
+    results = np.zeros((7, 7))  # Updated for additional algorithms
+    approximations = np.zeros((7, 7))  # Updated for additional algorithms
+    algorithms = [
+        max_utility_algorithm, least_satisfied_algorithm, most_envy_algorithm, 
+        nash_product_algorithm, current_envy_algorithm, utilitarian_least_satisfied_algorithm,
+        balance_cardinality_algorithm
+    ]
+    criteria = [utilitarian, egalitarian, envy_freeness, equitability, nash_product, ef1, leximin]
+    
     for perm in perms:
         for i, algorithm in enumerate(algorithms):
             allocation = algorithm(utilities, perm)
             for j, criterion in enumerate(criteria):
                 score = criterion(allocation, utilities)
-                if j == 4:  # Nash Product
+                if j == 4:  
+                    score = float(score)
+                    optimal_scores[j] = float(optimal_scores[j])
                     if score >= optimal_scores[j]:
                         results[i, j] += 1
-                else:  # Other criteria
-                    if score == optimal_scores[3]:
-                        results[i, j] += 1
- 
+                elif j==5:
+                    if score <= optimal_scores[j]:
+                        results[i, j] += 1       
+                else:
+                    if score == optimal_scores[j]:
+                        results[i, j] += 1   
+                
                 approximations[i, j] += abs(float(score) - float(optimal_scores[j]))
 
-    return results / len(perms) * 100, approximations/len(perms)
+    return results / len(perms) * 100, approximations / len(perms)
 
 def process_all_files(file_list):
-    total_results = np.zeros((4, 5))
-    total_approximations = np.zeros((4, 5))  
+    total_results = np.zeros((7, 7))  
+    total_approximations = np.zeros((7, 7))  
     t = 0
     for file_path in file_list:
         utilities = np.array(extract_matrix(file_path))
@@ -319,7 +473,7 @@ def process_all_files(file_list):
     return avg_results, avg_approximations  
 
 if __name__ == "__main__":
-    directory_path = Path(r'PATH')
+    directory_path = Path(r'C:\Users\User\Downloads\spliddit')
     file_pattern = directory_path / '*.INSTANCE'
     file_list = glob.glob(str(file_pattern))
     average_results, average_approximations = process_all_files(file_list)
