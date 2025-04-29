@@ -543,6 +543,7 @@ def process_instance_with_tiebreak(utilities):
 
 
 if __name__ == "__main__":
+    ## Artificial data
     dic_min = {}
     dic_max = {}
 
@@ -563,6 +564,9 @@ if __name__ == "__main__":
         avg_max = total_max / t
         dic_min[alpha] = avg_min
         dic_max[alpha] = avg_max
+    print(dic_min)
+    print(dic_max)
+    
     ### Spliddit
     directory_path = Path(r'C:\Users\User\Downloads\spliddit')
     file_pattern = directory_path / '*.INSTANCE'
