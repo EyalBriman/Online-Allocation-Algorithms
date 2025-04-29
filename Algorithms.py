@@ -44,6 +44,7 @@ def egalitarian(allocation, utilities):
         agent_utility = sum(utilities[i][k] for k in allocation[i]) if allocation[i] else 0
         min_utility = min(min_utility, agent_utility)
     return min_utility
+    
 def ef1(allocation, utilities):
     n = len(utilities)
     max_envy = float('-inf')
@@ -92,129 +93,148 @@ def envy_freeness(allocation, utilities):
     
     return max(0,max(envy_scores))
 
-def max_utility_algorithm(utilities, perm):
+def max_utility_algorithm_with_tiebreak(utilities, perm, agent_perm):
     allocation = [[] for _ in range(len(utilities))]
     for j in perm:
-        agent = np.argmax([utilities[i, j] for i in range(len(utilities))])
-        allocation[agent].append(j)
+        max_val = max(utilities[i][j] for i in range(len(utilities)))
+        candidates = [i for i in range(len(utilities)) if utilities[i][j] == max_val]
+        chosen = min(candidates, key=lambda i: agent_perm.index(i))
+        allocation[chosen].append(j)
     return allocation
 
-def most_envy_algorithm(utilities, perm):
+def least_satisfied_algorithm_with_tiebreak(utilities, perm, agent_perm):
+    allocation = [[] for _ in range(len(utilities))]
+    current_utilities = [0] * len(utilities)
+    for j in perm:
+        agents_who_value = [i for i in range(len(utilities)) if utilities[i, j] > 0]
+        if agents_who_value:
+            min_val = min(current_utilities[i] for i in agents_who_value)
+            candidates = [i for i in agents_who_value if current_utilities[i] == min_val]
+        else:
+            min_val = min(current_utilities)
+            candidates = [i for i in range(len(utilities)) if current_utilities[i] == min_val]
+        chosen = min(candidates, key=lambda i: agent_perm.index(i))
+        allocation[chosen].append(j)
+        current_utilities[chosen] += utilities[chosen][j]
+    return allocation
+
+def minimize_future_envy_algorithm_with_tiebreak(utilities, perm, agent_perm):
     n, m = utilities.shape
     allocation = [[] for _ in range(n)]
-    
     for j in perm:
-        max_envy = float('-inf')
-        most_envy_agent = -1
-        
+        envy_scores = []
         for i in range(n):
             current_envy = float('-inf')
             for k in range(n):
                 if i != k:
-                    u_i_S_i = sum(utilities[i, item] for item in allocation[i])
-                    u_i_S_k = sum(utilities[i, item] for item in allocation[k])
-                    envy_i_k = u_i_S_k + utilities[i, j] - u_i_S_i
+                    u_i_S_i = sum(utilities[i][item] for item in allocation[i])
+                    u_i_S_k = sum(utilities[i][item] for item in allocation[k])
+                    envy_i_k = u_i_S_k + utilities[i][j] - u_i_S_i
                     current_envy = max(current_envy, envy_i_k)
-            
-            if current_envy > max_envy:
-                max_envy = current_envy
-                most_envy_agent = i
-        allocation[most_envy_agent].append(j)
-
+            envy_scores.append(current_envy)
+        max_val = max(envy_scores)
+        candidates = [i for i in range(n) if envy_scores[i] == max_val]
+        chosen = min(candidates, key=lambda i: agent_perm.index(i))
+        allocation[chosen].append(j)
     return allocation
 
-
-def least_satisfied_algorithm(utilities, perm):
-    allocation = [[] for _ in range(len(utilities))]
-    current_utilities = [0] * len(utilities)
-    
-    for j in perm:
-        agents_who_value = [i for i in range(len(utilities)) if utilities[i, j] > 0]
-        if agents_who_value:
-            least_satisfied_agent = min(agents_who_value, key=lambda i: current_utilities[i])
-        else:
-            least_satisfied_agent = np.argmin(current_utilities)
-        
-        allocation[least_satisfied_agent].append(j)
-        current_utilities[least_satisfied_agent] += utilities[least_satisfied_agent][j]
-    
-    return allocation
-
-def current_envy_algorithm(utilities, perm):
+def minimize_current_envy_algorithm_with_tiebreak(utilities, perm, agent_perm):
     n, m = utilities.shape
     allocation = [[] for _ in range(n)]
-    
     for j in perm:
-        max_current_envy = float('-inf')
-        most_envy_agent = -1
-        
+        envy_scores = []
         for i in range(n):
             current_envy = 0
             for k in range(n):
                 if i != k:
-                    u_i_S_i = sum(utilities[i, item] for item in allocation[i])
-                    u_i_S_k = sum(utilities[i, item] for item in allocation[k])
+                    u_i_S_i = sum(utilities[i][item] for item in allocation[i])
+                    u_i_S_k = sum(utilities[i][item] for item in allocation[k])
                     envy_i_k = u_i_S_k - u_i_S_i
                     current_envy = max(current_envy, envy_i_k)
-            
-            if current_envy > max_current_envy:
-                max_current_envy = current_envy
-                most_envy_agent = i
-        
-        allocation[most_envy_agent].append(j)
-    
+            envy_scores.append(current_envy)
+        max_val = max(envy_scores)
+        candidates = [i for i in range(n) if envy_scores[i] == max_val]
+        chosen = min(candidates, key=lambda i: agent_perm.index(i))
+        allocation[chosen].append(j)
     return allocation
 
-def utilitarian_least_satisfied_algorithm(utilities, perm):
+def utilitarian_least_satisfied_algorithm_with_tiebreak(utilities, perm, agent_perm):
     allocation = [[] for _ in range(len(utilities))]
     current_utilities = [0] * len(utilities)
-    
     for j in perm:
-        min_utility = min(current_utilities)
-        least_satisfied_agents = [i for i in range(len(utilities)) if current_utilities[i] == min_utility]
-        best_agent = max(least_satisfied_agents, key=lambda i: utilities[i, j])
-        
-        allocation[best_agent].append(j)
-        current_utilities[best_agent] += utilities[best_agent][j]
-    
+        min_val = min(current_utilities)
+        candidates = [i for i in range(len(utilities)) if current_utilities[i] == min_val]
+        max_val = max(utilities[i][j] for i in candidates)
+        best_candidates = [i for i in candidates if utilities[i][j] == max_val]
+        chosen = min(best_candidates, key=lambda i: agent_perm.index(i))
+        allocation[chosen].append(j)
+        current_utilities[chosen] += utilities[chosen][j]
     return allocation
 
-def balance_cardinality_algorithm(utilities, perm):
+def balance_cardinality_algorithm_with_tiebreak(utilities, perm, agent_perm):
     allocation = [[] for _ in range(len(utilities))]
-    
     for j in perm:
-        fewest_items_agent = min(range(len(utilities)), key=lambda i: len(allocation[i]))
-        allocation[fewest_items_agent].append(j)
-    
+        min_len = min(len(allocation[i]) for i in range(len(utilities)))
+        candidates = [i for i in range(len(utilities)) if len(allocation[i]) == min_len]
+        chosen = min(candidates, key=lambda i: agent_perm.index(i))
+        allocation[chosen].append(j)
     return allocation
 
-def nash_product_algorithm(utilities, perm):
+def nash_product_algorithm_with_tiebreak(utilities, perm, agent_perm):
     n, m = utilities.shape
     allocation = [[] for _ in range(n)]
-    allocated_items = set()  
-
-    for i, j in enumerate(perm):
-        if j not in allocated_items:  
-            allocation[i % n].append(j)
-            allocated_items.add(j)  
-    remaining_items = list(set(range(m)) - allocated_items) 
-
+    allocated_items = set()
+    for idx, j in enumerate(perm):
+        if j not in allocated_items:
+            allocation[agent_perm[idx % n]].append(j)
+            allocated_items.add(j)
+    remaining_items = list(set(range(m)) - allocated_items)
     for j in remaining_items:
         best_allocation = None
         best_product = float('-inf')
-
         for i in range(n):
             temp_allocation = [list(bundle) for bundle in allocation]
             temp_allocation[i].append(j)
             product = nash_product(temp_allocation, utilities)
-
             if product > best_product:
                 best_product = product
                 best_allocation = temp_allocation
-
         allocation = best_allocation
-
     return allocation
+
+def optimal_utilitarian(utilities):
+    model = gp.Model()
+    n, m = utilities.shape
+    x = model.addVars(n, m, vtype=GRB.BINARY)
+    model.setObjective(gp.quicksum(utilities[i, j] * x[i, j] for i in range(n) for j in range(m)), GRB.MAXIMIZE)
+    for j in range(m):
+        model.addConstr(gp.quicksum(x[i, j] for i in range(n)) == 1)
+    model.optimize()
+    allocation = [[] for _ in range(n)]
+    for i in range(n):
+        for j in range(m):
+            if x[i, j].X > 0.5:
+                allocation[i].append(j)
+    return allocation
+
+def optimal_egalitarian(utilities):
+    model = gp.Model()
+    n, m = utilities.shape
+    x = model.addVars(n, m, vtype=GRB.BINARY)
+    min_util = model.addVar(vtype=GRB.CONTINUOUS)
+    model.setObjective(min_util, GRB.MAXIMIZE)
+    for i in range(n):
+        model.addConstr(min_util <= gp.quicksum(utilities[i, j] * x[i, j] for j in range(m)))
+    for j in range(m):
+        model.addConstr(gp.quicksum(x[i, j] for i in range(n)) == 1)
+    model.optimize()
+    allocation = [[] for _ in range(n)]
+    for i in range(n):
+        for j in range(m):
+            if x[i, j].X > 0.5:
+                allocation[i].append(j)
+    return allocation
+
 
 def optimal_ef1(utilities):
     model = gp.Model()
@@ -350,134 +370,230 @@ def optimal_equitability(utilities):
     
     return allocation
 
-def simulated_annealing(utilities, initial_temp=100, cooling_rate=0.95, steps=5000, restart_probability=0.01):
+
+def optimal_nash_product(utilities):
+    model = gp.Model()
     n, m = utilities.shape
+
+    x = model.addVars(n, m, vtype=GRB.BINARY, name="x")
+    u = model.addVars(n, vtype=GRB.CONTINUOUS, name="u")
+    log_u = model.addVars(n, vtype=GRB.CONTINUOUS, name="log_u")
+
+    # Each item must be allocated to exactly one agent
+    model.addConstrs(gp.quicksum(x[i, j] for i in range(n)) == 1 for j in range(m))
+
+    # Each agent must get at least one item
+    model.addConstrs(gp.quicksum(x[i, j] for j in range(m)) >= 1 for i in range(n))
+
+    # Define utility for each agent
+    model.addConstrs(
+        u[i] == gp.quicksum(utilities[i, j] * x[i, j] for j in range(m)) for i in range(n)
+    )
+
+    # Add logarithmic constraints: log_u[i] = log(u[i])
+    for i in range(n):
+        model.addGenConstrLog(u[i], log_u[i], name=f"log_constraint_{i}")
+
+    # Maximize the sum of log utilities (i.e., Nash Social Welfare)
+    model.setObjective(gp.quicksum(log_u[i] for i in range(n)), GRB.MAXIMIZE)
+
+    model.Params.OutputFlag = 0
+    model.optimize()
+
+    if model.Status != GRB.OPTIMAL:
+        print("Model did not converge.")
+        return None
+
     allocation = [[] for _ in range(n)]
-    items = list(range(m))
-    np.random.shuffle(items)
-    for i, item in enumerate(items):
-        allocation[i % n].append(item)
+    for i in range(n):
+        for j in range(m):
+            if x[i, j].X > 0.5:
+                allocation[i].append(j)
 
-    current_score = nash_product(allocation, utilities)
-    current_allocation = allocation
+    return allocation
 
-    temperature = Decimal(initial_temp)
 
-    for step in range(steps):
-        if np.random.uniform(0, 1) < restart_probability:
-            np.random.shuffle(items)
-            allocation = [[] for _ in range(n)]
-            for i, item in enumerate(items):
-                allocation[i % n].append(item)
-            current_allocation = allocation
-            current_score = nash_product(current_allocation, utilities)
-            temperature = Decimal(initial_temp)
-            continue
+def generate_synthetic_utilities(n, m, alpha=0.5, total_tokens=1000):
+    """
+    Generate an (n x m) utility matrix with:
+    - Each agent's utilities summing to `total_tokens`
+    - Controlled correlation: alpha=0 (identical), alpha=1 (completely different)
+    - Underlying distribution: Dirichlet-based
+    """
+    # Base profile (shared component) from Dirichlet, then scaled
+    base_profile = np.random.dirichlet([1.0] * m)
+    base_utility = (base_profile * total_tokens).round().astype(int)
 
-        new_allocation = [list(bundle) for bundle in current_allocation]
-        i, j = np.random.choice(range(n), 2, replace=False)
-        if len(new_allocation[i]) > 0 and len(new_allocation[j]) > 0:
-            a, b = np.random.choice(new_allocation[i]), np.random.choice(new_allocation[j])
-            new_allocation[i].remove(a)
-            new_allocation[j].remove(b)
-            new_allocation[i].append(b)
-            new_allocation[j].append(a)
+    utilities = np.zeros((n, m), dtype=int)
 
-        all_items = [item for sublist in new_allocation for item in sublist]
-        if len(all_items) != len(set(all_items)):
-            continue  
+    for i in range(n):
+        # Generate a fully independent profile for this agent
+        independent_profile = np.random.dirichlet([1.0] * m)
+        independent_utility = (independent_profile * total_tokens).round().astype(int)
 
-        new_score = nash_product(new_allocation, utilities)
+        # Mix the base and independent profiles
+        mixed = alpha * independent_utility + (1 - alpha) * base_utility
 
-        if new_score > current_score or np.random.uniform(0, 1) < np.exp((new_score - current_score) / temperature):
-            current_allocation = new_allocation
-            current_score = new_score
+        # Round and fix token sum (adjust for rounding error)
+        rounded = np.round(mixed).astype(int)
+        diff = total_tokens - np.sum(rounded)
 
-        temperature *= Decimal(cooling_rate)
+        # Adjust by adding/subtracting from largest/smallest utility entries
+        if diff != 0:
+            sorted_indices = np.argsort(rounded)
+            for idx in (reversed(sorted_indices) if diff < 0 else sorted_indices):
+                adjustment = 1 if diff > 0 else -1
+                if 0 <= rounded[idx] + adjustment <= total_tokens:
+                    rounded[idx] += adjustment
+                    diff -= adjustment
+                    if diff == 0:
+                        break
 
-    return current_allocation, current_score
+        utilities[i] = rounded+1
 
-def process_instance_file(file_path):
-    utilities = np.array(extract_matrix(file_path))
+    return utilities
+
+def optimal_for_criterion(criterion, utilities):
+    if criterion == utilitarian:
+        return optimal_utilitarian(utilities)
+    elif criterion == egalitarian:
+        return optimal_egalitarian(utilities)
+    elif criterion == envy_freeness:
+        return optimal_envy_freeness(utilities)
+    elif criterion == equitability:
+        return optimal_equitability(utilities)
+    elif criterion == ef1:
+        return optimal_ef1(utilities)
+    elif criterion == leximin:
+        return optimal_leximin(utilities)
+    elif criterion == nash_product:
+        return optimal_nash_product(utilities)
+    else:
+        raise ValueError("Unknown criterion")
+
+algorithms = [
+    max_utility_algorithm_with_tiebreak, 
+    least_satisfied_algorithm_with_tiebreak, 
+    minimize_future_envy_algorithm_with_tiebreak, 
+    nash_product_algorithm_with_tiebreak, 
+    minimize_current_envy_algorithm_with_tiebreak, 
+    utilitarian_least_satisfied_algorithm_with_tiebreak,
+    balance_cardinality_algorithm_with_tiebreak
+]
+
+criteria = [
+    utilitarian, 
+    egalitarian, 
+    envy_freeness, 
+    equitability, 
+    nash_product, 
+    ef1, 
+    leximin
+]
+
+
+def process_instance_with_tiebreak(utilities):
     n, m = utilities.shape
+
+    # All permutations of item orderings and agent orderings
     perms = list(permutations(range(m)))
-    score1 = []
-    score2 = []
-    for perm in perms:
-        allocation1 = max_utility_algorithm(utilities, perm)
-        allocation2 = least_satisfied_algorithm(utilities, perm)
-        score1.append(utilitarian(allocation1, utilities))
-        score2.append(egalitarian(allocation2, utilities))
-    
-    optimal_scores = []
-    optimal_scores.append(max(score1))
-    optimal_scores.append(max(score2))
-    optimal_allocations = [
-        optimal_envy_freeness(utilities),
-        optimal_equitability(utilities),
-        optimal_ef1(utilities),
-        optimal_leximin(utilities)
-    ]
+    agent_perms = list(permutations(range(n)))
 
-    optimal_criteria_scores = [envy_freeness, equitability, ef1, leximin]
+    min_percents = np.full((len(algorithms), len(criteria)), np.inf)
+    max_percents = np.zeros((len(algorithms), len(criteria)))
 
-    optimal_scores.extend([criterion(optimal_allocations[i], utilities) for i, criterion in enumerate(optimal_criteria_scores)])
-    
-    sa_allocation, _ = simulated_annealing(utilities)
-    optimal_scores.append(nash_product(sa_allocation, utilities))
+    # Precompute optimal allocations and scores once per criterion
+    optimal_allocations = {
+        criterion: optimal_for_criterion(criterion, utilities)
+        for criterion in criteria
+    }
+    optimal_scores = {
+        criterion: criterion(optimal_allocations[criterion], utilities)
+        for criterion in criteria
+    }
 
-    results = np.zeros((7, 7))  # Updated for additional algorithms
-    approximations = np.zeros((7, 7))  # Updated for additional algorithms
-    algorithms = [
-        max_utility_algorithm, least_satisfied_algorithm, most_envy_algorithm, 
-        nash_product_algorithm, current_envy_algorithm, utilitarian_least_satisfied_algorithm,
-        balance_cardinality_algorithm
-    ]
-    criteria = [utilitarian, egalitarian, envy_freeness, equitability, nash_product, ef1, leximin]
-    
-    for perm in perms:
-        for i, algorithm in enumerate(algorithms):
-            allocation = algorithm(utilities, perm)
-            for j, criterion in enumerate(criteria):
-                score = criterion(allocation, utilities)
-                if j == 4:  
-                    score = float(score)
-                    optimal_scores[j] = float(optimal_scores[j])
-                    if score >= optimal_scores[j]:
-                        results[i, j] += 1
-                elif j==5:
-                    if score <= optimal_scores[j]:
-                        results[i, j] += 1       
-                else:
-                    if score == optimal_scores[j]:
-                        results[i, j] += 1   
-                
-                approximations[i, j] += abs(float(score) - float(optimal_scores[j]))
+    for agent_perm in agent_perms:
+        tie_break_results = np.zeros((len(algorithms), len(criteria)))
 
-    return results / len(perms) * 100, approximations / len(perms)
+        for perm in perms:
+            for i, algorithm in enumerate(algorithms):
+                allocation = algorithm(utilities, perm, agent_perm)
+                for j, criterion in enumerate(criteria):
+                    score = criterion(allocation, utilities)
+                    optimal_score = optimal_scores[criterion]
 
-def process_all_files(file_list):
-    total_results = np.zeros((7, 7))  
-    total_approximations = np.zeros((7, 7))  
-    t = 0
-    for file_path in file_list:
-        utilities = np.array(extract_matrix(file_path))
-        n, m = utilities.shape
-        if n <= 8 and m <= 8:
-            t += 1
-            instance_results, instance_approximations = process_instance_file(file_path) 
-            total_results += instance_results
-            total_approximations += instance_approximations  
-    avg_results = total_results / t if t > 0 else total_results
-    avg_approximations = total_approximations / t if t > 0 else total_approximations  
-    return avg_results, avg_approximations  
+                    # Nash: allow approximation upwards
+                    if j == 4:
+                        if float(score) >= float(optimal_score):
+                            tie_break_results[i, j] += 1
+                    # EF1: allow approximation downwards
+                    elif j == 5:
+                        if score <= optimal_score:
+                            tie_break_results[i, j] += 1
+                    # Other: exact match
+                    else:
+                        if score == optimal_score:
+                            tie_break_results[i, j] += 1
+
+        percentage_optimal = (tie_break_results / len(perms)) * 100
+        min_percents = np.minimum(min_percents, percentage_optimal)
+        max_percents = np.maximum(max_percents, percentage_optimal)
+
+    return min_percents, max_percents
+
 
 if __name__ == "__main__":
+    dic_min = {}
+    dic_max = {}
+
+    for alpha in [0.1, 0.3, 0.7, 0.9]:
+        total_min = np.zeros((len(algorithms), len(criteria)))
+        total_max = np.zeros((len(algorithms), len(criteria)))
+        t = 0
+
+        for n in [3, 4]:
+            for m in [4, 5, 6]:
+                for _ in range(10):
+                    utilities = generate_synthetic_utilities(n, m, alpha)
+                    min_percent, max_percent = process_instance_with_tiebreak(utilities)
+                    total_min += min_percent
+                    total_max += max_percent
+                    t += 1
+        avg_min = total_min / t
+        avg_max = total_max / t
+        dic_min[alpha] = avg_min
+        dic_max[alpha] = avg_max
+    ### Spliddit
     directory_path = Path(r'C:\Users\User\Downloads\spliddit')
     file_pattern = directory_path / '*.INSTANCE'
     file_list = glob.glob(str(file_pattern))
-    average_results, average_approximations = process_all_files(file_list)
-    print("Average Results:")
-    print(average_results)
-    print("Average Approximations:")
-    print(average_approximations)
+
+ # Initialize arrays to store cumulative min and max percentages across instances
+    total_min = np.zeros((len(algorithms), len(criteria)))
+    total_max = np.zeros((len(algorithms), len(criteria)))
+    t = 0
+
+    for file_path in file_list:
+        utilities = np.array(extract_matrix(file_path))+1 
+        # to prevent zero utilities (for the nash optimization)
+        n, m = utilities.shape
+        if (n==3 and m>3 and m<6):
+            t += 1
+            # Get the minimum and maximum percentages for each algorithm-criterion pair for this instance
+            min_percent, max_percent = process_instance_with_tiebreak(utilities)
+            
+            # Accumulate the min/max percentages across instances
+            total_min += min_percent
+            total_max += max_percent
+
+
+    # Average the min/max percentages over all instances
+    avg_min_percent = total_min / t if t > 0 else total_min
+    avg_max_percent = total_max / t if t > 0 else total_max
+
+    print("Averaged Minimum Percentages (Worst-case Tie-breaking):")
+    print(avg_min_percent)
+
+    print("\nAveraged Maximum Percentages (Best-case Tie-breaking):")
+    print(avg_max_percent)
+
